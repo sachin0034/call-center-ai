@@ -2,9 +2,7 @@
 from helpers.logging import logger, APP_NAME, trace
 from helpers.config import CONFIG
 
-
 logger.info(f"{APP_NAME} v{CONFIG.version}")
-
 
 # General imports
 from azure.communication.callautomation import PhoneNumberIdentifier
@@ -48,7 +46,6 @@ from pydantic import TypeAdapter, ValidationError
 import azure.functions as func
 import json
 
-
 # Jinja configuration
 _jinja = Environment(
     autoescape=True,
@@ -82,19 +79,11 @@ _COMMUNICATIONSERVICES_CALLABACK_TPL = urljoin(
 )
 logger.info(f"Using call event URL {_COMMUNICATIONSERVICES_CALLABACK_TPL}")
 
-
-@app.route(
-    "health/liveness",
-    methods=["GET"],
-)
+@app.route("/health/liveness", methods=["GET"])
 async def health_liveness_get(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(status_code=HTTPStatus.NO_CONTENT)
 
-
-@app.route(
-    "health/readiness",
-    methods=["GET"],
-)
+@app.route("/health/readiness", methods=["GET"])
 async def health_readiness_get(req: func.HttpRequest) -> func.HttpResponse:
     # Check all components in parallel
     (
@@ -131,12 +120,7 @@ async def health_readiness_get(req: func.HttpRequest) -> func.HttpResponse:
         status_code=status_code,
     )
 
-
-@app.route(
-    "report",
-    methods=["GET"],
-    trigger_arg_name="req",
-)
+@app.route("/report", methods=["GET"])
 async def report_get(req: func.HttpRequest) -> func.HttpResponse:
     try:
         phone_number = (
@@ -173,12 +157,7 @@ async def report_get(req: func.HttpRequest) -> func.HttpResponse:
         status_code=HTTPStatus.OK,
     )
 
-
-@app.route(
-    "report/{call_id:guid}",
-    methods=["GET"],
-    trigger_arg_name="req",
-)
+@app.route("/report/<call_id:guid>", methods=["GET"])
 async def report_single_get(req: func.HttpRequest) -> func.HttpResponse:
     try:
         call_id = UUID(req.route_params["call_id"])
@@ -210,13 +189,7 @@ async def report_single_get(req: func.HttpRequest) -> func.HttpResponse:
         status_code=HTTPStatus.OK,
     )
 
-
-# TODO: Add total (int) and calls (list) as a wrapper for the list of calls
-@app.route(
-    "call/{phone_number}",
-    methods=["GET"],
-    trigger_arg_name="req",
-)
+@app.route("/call/<phone_number>", methods=["GET"])
 async def call_search_get(req: func.HttpRequest) -> func.HttpResponse:
     try:
         phone_number = PhoneNumber(req.route_params["phone_number"])
@@ -230,12 +203,7 @@ async def call_search_get(req: func.HttpRequest) -> func.HttpResponse:
         status_code=HTTPStatus.OK,
     )
 
-
-@app.route(
-    "call/{call_id:guid}",
-    methods=["GET"],
-    trigger_arg_name="req",
-)
+@app.route("/call/<call_id:guid>", methods=["GET"])
 async def call_get(req: func.HttpRequest) -> func.HttpResponse:
     try:
         call_id = UUID(req.route_params["call_id"])
@@ -254,12 +222,7 @@ async def call_get(req: func.HttpRequest) -> func.HttpResponse:
         status_code=HTTPStatus.OK,
     )
 
-
-@app.route(
-    "call",
-    methods=["POST"],
-    trigger_arg_name="req",
-)
+@app.route("/call", methods=["POST"])
 async def call_post(req: func.HttpRequest) -> func.HttpResponse:
     try:
         initiate = CallInitiateModel.model_validate_json(req.get_body())
@@ -286,15 +249,12 @@ async def call_post(req: func.HttpRequest) -> func.HttpResponse:
         status_code=HTTPStatus.CREATED,
     )
 
-
 @app.queue_trigger(
     arg_name="call",
     connection="Storage",
     queue_name=CONFIG.communication_services.call_queue_name,
 )
-async def call_event(
-    call: func.QueueMessage,
-) -> None:
+async def call_event(call: func.QueueMessage) -> None:
     event = EventGridEvent.from_json(call.get_body())
     event_type = event.event_type
 
@@ -315,7 +275,6 @@ async def call_event(
         incoming_context=call_context,
         phone_number=phone_number,
     )
-
 
 @app.queue_trigger(
     arg_name="sms",
@@ -369,12 +328,7 @@ async def sms_event(
         trainings_callback=_trainings_callback,
     )
 
-
-@app.route(
-    "communicationservices/event/{call_id:guid}/{secret:length(16)}",
-    methods=["POST"],
-    trigger_arg_name="req",
-)
+@app.route("/communicationservices/event/<call_id:guid>/<secret:length(16)>", methods=["POST"])
 @app.queue_output(
     arg_name="trainings",
     connection="Storage",
@@ -408,7 +362,6 @@ async def communicationservices_event_post(
         ]
     )
     return func.HttpResponse(status_code=HTTPStatus.NO_CONTENT)
-
 
 async def _communicationservices_event_worker(
     call_id: UUID,
@@ -550,15 +503,12 @@ async def _communicationservices_event_worker(
         call
     )  # TODO: Do not persist on every event, this is simpler but not efficient
 
-
 @app.queue_trigger(
     arg_name="trainings",
     connection="Storage",
     queue_name=CONFIG.communication_services.trainings_queue_name,
 )
-async def trainings_event(
-    trainings: func.QueueMessage,
-) -> None:
+async def trainings_event(trainings: func.QueueMessage) -> None:
     call = CallStateModel.model_validate_json(trainings.get_body())
     logger.debug(f"Trainings event received for call {call}")
     trace.get_current_span().set_attribute(
@@ -566,22 +516,18 @@ async def trainings_event(
     )
     await call.trainings(cache_only=False)  # Get trainings by advance to populate cache
 
-
 @app.queue_trigger(
     arg_name="post",
     connection="Storage",
     queue_name=CONFIG.communication_services.post_queue_name,
 )
-async def post_event(
-    post: func.QueueMessage,
-) -> None:
+async def post_event(post: func.QueueMessage) -> None:
     call = CallStateModel.model_validate_json(post.get_body())
     logger.debug(f"Post event received for call {call}")
     trace.get_current_span().set_attribute(
         SpanAttributes.ENDUSER_ID, call.initiate.phone_number
     )
     await on_end_call(call)
-
 
 def _trigger_trainings_event(
     call: CallStateModel,
@@ -592,7 +538,6 @@ def _trigger_trainings_event(
     """
     trainings.set(call.model_dump_json(exclude_none=True))
 
-
 def _trigger_post_event(
     call: CallStateModel,
     post: func.Out[str],
@@ -601,7 +546,6 @@ def _trigger_post_event(
     Shortcut to add post-call intelligence to the queue.
     """
     post.set(call.model_dump_json(exclude_none=True))
-
 
 async def _communicationservices_event_url(
     phone_number: PhoneNumber, initiate: Optional[CallInitiateModel] = None
@@ -629,13 +573,7 @@ async def _communicationservices_event_url(
     )
     return url, call
 
-
-# TODO: Secure this endpoint with a secret, either in the Authorization header or in the URL
-@app.route(
-    "twilio/sms",
-    methods=["POST"],
-    trigger_arg_name="req",
-)
+@app.route("/twilio/sms", methods=["POST"])
 @app.queue_output(
     arg_name="trainings",
     connection="Storage",
@@ -693,14 +631,12 @@ async def twilio_sms_post(
         status_code=HTTPStatus.OK,
     )
 
-
 def _str_to_contexts(contexts: Optional[str]) -> Optional[set[CallContextEnum]]:
     return (
         {CallContextEnum(context) for context in json.loads(contexts)}
         if contexts
         else None
     )
-
 
 def _validation_error(
     e: Exception,
@@ -724,7 +660,6 @@ def _validation_error(
         mimetype="application/json",
         status_code=HTTPStatus.BAD_REQUEST,
     )
-
 
 async def _use_automation_client() -> CallAutomationClient:
     global _automation_client
